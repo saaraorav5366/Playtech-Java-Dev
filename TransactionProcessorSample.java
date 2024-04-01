@@ -15,67 +15,71 @@ public class TransactionProcessorSample {
     public static void main(final String[] args) throws IOException {
         List<User> users = TransactionProcessorSample.readUsers(Paths.get(args[0]));
         List<Transaction> transactions = TransactionProcessorSample.readTransactions(Paths.get(args[1]));
-        List<BinMapping> binMappings = TransactionProcessorSample.readBinMappings(Paths.get(args[2]));
-
-        List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
-
-        TransactionProcessorSample.writeBalances(Paths.get(args[3]), users);
-        TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
+//        List<BinMapping> binMappings = TransactionProcessorSample.readBinMappings(Paths.get(args[2]));
+//
+//        List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
+//
+//        TransactionProcessorSample.writeBalances(Paths.get(args[3]), users);
+//        TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
     }
 
     private static List<User> readUsers(final Path filePath) {
         List<User> users = new ArrayList<>();
-        BufferedReader reader = null;
+        BufferedReader reader;
         try {
             File file = new File(String.valueOf(filePath));
             reader = new BufferedReader(new FileReader(file));
+            // Skip the first line (header line)
+            reader.readLine();
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(",");
                 users.add(new User(parts[0], parts[1], Double.parseDouble(parts[2]), parts[3], Integer.parseInt(parts[4]),
-                        Double.parseDouble(parts[5]), Double.parseDouble(parts[6]), Double.parseDouble(parts[7]),
-                        Double.parseDouble(parts[8])));
+                            Double.parseDouble(parts[5]), Double.parseDouble(parts[6]), Double.parseDouble(parts[7]),
+                            Double.parseDouble(parts[8])));
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
-        } finally {
-            try {
-                assert reader != null;
-                reader.close();
-            } catch (IOException e) {
-                System.out.println("Closing reader error");
-            }
         }
         return users;
     }
 
     private static List<Transaction> readTransactions(final Path filePath) {
         List<Transaction> transactions = new ArrayList<>();
-        BufferedReader reader = null;
+        BufferedReader reader;
         try {
             File file = new File(String.valueOf(filePath));
             reader = new BufferedReader(new FileReader(file));
+            // Skip the first line (header line)
+            reader.readLine();
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(",");
-                transactions.add(new Transaction(parts[0], parts[1], Double.parseDouble(parts[2]), parts[3], parts[4]));
+                transactions.add(new Transaction(parts[0], parts[1], parts[2], Double.parseDouble(parts[3]), parts[4], parts[5]));
             }
         } catch (IOException e) {
         throw new RuntimeException(e);
-        } finally {
-            try {
-            assert reader != null;
-            reader.close();
-            } catch (IOException e) {
-            System.out.println("Closing reader error");
-            }
         }
         return transactions;
     }
 
     private static List<BinMapping> readBinMappings(final Path filePath) {
-        // ToDo Implementation
-        return new ArrayList<>();
+        List<BinMapping> binMappings = new ArrayList<>();
+        BufferedReader reader;
+        try {
+            File file = new File(String.valueOf(filePath));
+            reader = new BufferedReader(new FileReader(file));
+            // Skip the first line (header line)
+            reader.readLine();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                binMappings.add(new BinMapping(parts[0], Long.parseLong(parts[1]), Long.parseLong(parts[2]), parts[3], parts[4]));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        return binMappings;
     }
 
     private static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
@@ -128,11 +132,11 @@ class User {
 class Transaction {
     private String transaction_id;
     private String user_id;
-    private double amount;
     private String type;
+    private double amount;
     private String method;
     private String accountNumber;
-    public Transaction(String transaction_id, String user_id, double amount, String type,
+    public Transaction(String transaction_id, String user_id, String type, double amount,
                        String method, String accountNumber){
         this.transaction_id = transaction_id;
         this.user_id = user_id;
@@ -145,6 +149,18 @@ class Transaction {
 }
 
 class BinMapping {
+    private String name;
+    private long rangeFrom;
+    private long rangeTo;
+    private String type;
+    private String country;
+    public BinMapping(String name, long rangeFrom, long rangeTo, String type, String country){
+        this.name = name;
+        this.rangeFrom = rangeFrom;
+        this.rangeTo = rangeTo;
+        this.type = type;
+        this.country = country;
+    }
 }
 
 class Event {
