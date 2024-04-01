@@ -5,7 +5,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 
 // This template shows input parameters format.
@@ -15,12 +17,12 @@ public class TransactionProcessorSample {
     public static void main(final String[] args) throws IOException {
         List<User> users = TransactionProcessorSample.readUsers(Paths.get(args[0]));
         List<Transaction> transactions = TransactionProcessorSample.readTransactions(Paths.get(args[1]));
-//        List<BinMapping> binMappings = TransactionProcessorSample.readBinMappings(Paths.get(args[2]));
-//
-//        List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
+        List<BinMapping> binMappings = TransactionProcessorSample.readBinMappings(Paths.get(args[2]));
+
+        List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
 //
 //        TransactionProcessorSample.writeBalances(Paths.get(args[3]), users);
-//        TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
+        TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
     }
 
     private static List<User> readUsers(final Path filePath) {
@@ -83,8 +85,16 @@ public class TransactionProcessorSample {
     }
 
     private static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
-        // ToDo Implementation
-        return null;
+        Set<String> usedTransactionIds = new HashSet<>();
+        List<Event> events = new ArrayList<>();
+        for (Transaction transaction : transactions) {
+            if (usedTransactionIds.contains(transaction.getTransactionId())) {
+                // Transaction ID is not unique
+                events.add(new Event(transaction.getTransactionId(), Event.STATUS_DECLINED, "Transaction ID not unique"));
+            }
+            usedTransactionIds.add(transaction.getTransactionId());
+        }
+        return events;
     }
 
     private static void writeBalances(final Path filePath, final List<User> users) {
@@ -146,6 +156,9 @@ class Transaction {
         this.accountNumber = accountNumber;
     }
 
+    public String getTransactionId() {
+        return this.transaction_id;
+    }
 }
 
 class BinMapping {
@@ -170,4 +183,10 @@ class Event {
     public String transactionId;
     public String status;
     public String message;
+
+    public Event(String transactionId, String status, String message) {
+        this.transactionId = transactionId;
+        this.status = status;
+        this.message = message;
+    }
 }
