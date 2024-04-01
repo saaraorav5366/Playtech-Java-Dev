@@ -1,7 +1,7 @@
 package com.playtech.assignment;
 
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -24,13 +24,53 @@ public class TransactionProcessorSample {
     }
 
     private static List<User> readUsers(final Path filePath) {
-        // ToDo Implementation
-        return new ArrayList<>();
+        List<User> users = new ArrayList<>();
+        BufferedReader reader = null;
+        try {
+            File file = new File(String.valueOf(filePath));
+            reader = new BufferedReader(new FileReader(file));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                users.add(new User(parts[0], parts[1], Double.parseDouble(parts[2]), parts[3], Integer.parseInt(parts[4]),
+                        Double.parseDouble(parts[5]), Double.parseDouble(parts[6]), Double.parseDouble(parts[7]),
+                        Double.parseDouble(parts[8])));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            try {
+                assert reader != null;
+                reader.close();
+            } catch (IOException e) {
+                System.out.println("Closing reader error");
+            }
+        }
+        return users;
     }
 
     private static List<Transaction> readTransactions(final Path filePath) {
-        // ToDo Implementation
-        return new ArrayList<>();
+        List<Transaction> transactions = new ArrayList<>();
+        BufferedReader reader = null;
+        try {
+            File file = new File(String.valueOf(filePath));
+            reader = new BufferedReader(new FileReader(file));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(",");
+                transactions.add(new Transaction(parts[0], parts[1], Double.parseDouble(parts[2]), parts[3], parts[4]));
+            }
+        } catch (IOException e) {
+        throw new RuntimeException(e);
+        } finally {
+            try {
+            assert reader != null;
+            reader.close();
+            } catch (IOException e) {
+            System.out.println("Closing reader error");
+            }
+        }
+        return transactions;
     }
 
     private static List<BinMapping> readBinMappings(final Path filePath) {
@@ -59,10 +99,48 @@ public class TransactionProcessorSample {
 
 
 class User {
+    private String user_id;
+    private String username;
+    private double balance;
+    private String country;
+    private int frozen;
+    private double deposit_min;
+    private double deposit_max;
+    private double withdraw_min;
+    private double withdraw_max;
+
+    public User(String user_id, String username, double balance, String country,
+                int frozen, double deposit_min, double deposit_max,double withdraw_min, double withdraw_max){
+        this.user_id = user_id;
+        this.username = username;
+        this.balance = balance;
+        this.country = country;
+        this.frozen = frozen;
+        this.deposit_min = deposit_min;
+        this.deposit_max = deposit_max;
+        this.withdraw_min = withdraw_min;
+        this.withdraw_max = withdraw_max;
+    }
+
 
 }
 
 class Transaction {
+    private String transaction_id;
+    private String user_id;
+    private double amount;
+    private String type;
+    private String method;
+    private String accountNumber;
+    public Transaction(String transaction_id, String user_id, double amount, String type,
+                       String method, String accountNumber){
+        this.transaction_id = transaction_id;
+        this.user_id = user_id;
+        this.amount = amount;
+        this.type = type;
+        this.method = method;
+        this.accountNumber = accountNumber;
+    }
 
 }
 
