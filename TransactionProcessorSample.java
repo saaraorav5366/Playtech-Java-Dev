@@ -85,28 +85,19 @@ public class TransactionProcessorSample {
     private static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
         Set<String> usedTransactionIds = new HashSet<>();
         List<Event> events = new ArrayList<>();
+        TreeMap<String,String> declinedTransactionTracker = new TreeMap<>();
         // Validate that the transaction ID is unique (not used before).
         for (Transaction transaction : transactions) {
-            verifyTransactionIdAndUser(usedTransactionIds, transaction, events, users);
-            validatePaymentMethod(transaction,events,users, binMappings);
-
-            double amount = transaction.getAmount();
-            for (User user : users){
-                if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
-                    if (Objects.equals(transaction.getType(), "DEPOSIT")){
-                        if (amount <= 0 || amount > user.getBalance() || (amount < user.getDeposit_min() || amount > user.getDeposit_max())){
-                            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of deposit"));
-                        }
-
-                    } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
-                        if (amount <= 0 || amount > user.getBalance() || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())){
-                            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of withdraw"));
-                        }
-                    } else {
-                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Neither deposit nor withdrawal"));
-                    }
-                }
+            if (verifyTransactionIdAndUser(usedTransactionIds, transaction, events, users, declinedTransactionTracker)){
+                continue;
             }
+            if (validatePaymentMethod(transaction, events, users, binMappings, declinedTransactionTracker)){
+                continue;
+            }
+            if (verifyDepositWithDraw(transaction, events, users, declinedTransactionTracker)){
+                continue;
+            }
+//            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not exist or is wrong"));
         }
         return events;
     }
@@ -124,11 +115,12 @@ public class TransactionProcessorSample {
         }
     }
 
-    private static void verifyTransactionIdAndUser(Set<String> usedTransactionIds,Transaction transaction, List<Event> events, List<User> users){
-
+    private static boolean verifyTransactionIdAndUser(Set<String> usedTransactionIds,Transaction transaction, List<Event> events, List<User> users, TreeMap<String,String> declinedTransactionTracker){
         if (usedTransactionIds.contains(transaction.getTransaction_id())) {
             // Transaction ID is not unique
             events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Non-unique transaction ID"));
+            declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+            return true;
         }
         usedTransactionIds.add(transaction.getTransaction_id());
         //  Verify that the user exists and is not frozen (users are loaded from a file, see "inputs").
@@ -138,14 +130,19 @@ public class TransactionProcessorSample {
             validUser_id.add(user.getUser_id());
             if (user.getFrozen() == 1) {
                 events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "User is frozen"));
+                declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                return true;
             }
         }
         if(!validUser_id.contains(transaction.getUser_id())){
             events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "user_id from Transactions not in Users"));
+            declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+            return true;
         }
+        return false;
     }
 
-    private static void validatePaymentMethod(Transaction transaction, List<Event> events, List<User> users, List<BinMapping> binMappings){
+    private static boolean validatePaymentMethod(Transaction transaction, List<Event> events, List<User> users, List<BinMapping> binMappings, TreeMap<String,String> declinedTransactionTracker){
         // Validate payment method
         if (Objects.equals(transaction.getMethod(), "TRANSFER")){
             String iban = transaction.getAccount_Number().replaceAll("\\s"," ");
@@ -154,6 +151,8 @@ public class TransactionProcessorSample {
                 if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
                     if(!iban.substring(0, 2).equals(user.getCountry())){
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not exist or is wrong"));
+                        declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                        return true;
                     }
                 }
             }
@@ -178,6 +177,8 @@ public class TransactionProcessorSample {
 
             if (!remainder.equals(BigInteger.ONE)){
                 events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid IBAN number"));
+                declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                return true;
             }
         } else if (Objects.equals(transaction.getMethod(), "CARD")) {
             String accountNumberPrefix = transaction.getAccount_Number().substring(0, 10); // Extract first 10 digits
@@ -202,31 +203,106 @@ public class TransactionProcessorSample {
                     }
 
                     // Exit the loop once a BIN match is found
-                    if (binMatch) {
-                        break;
-                    }
+                    break;
                 }
             }
 
             // Check if a matching BIN was found
             if (!binMatch) {
                 events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "BIN number not in range"));
+                declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                return true;
             } else {
                 // Check if the country code matches
                 if (!countryMatch) {
                     events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code mismatch"));
+                    declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                    return true;
                 } else {
                     // Check if the card type is valid
                     if (!Objects.equals(cardType, "DC")) {
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Not a debit card transaction"));
+                        declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                        return true;
                     }
                 }
             }
         }
         else { // Other payment types must be declined
             events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid payment method"));
+            declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+            return true;
         }
+        return false;
+
     }
+
+
+    private static boolean verifyDepositWithDraw(Transaction transaction, List<Event> events, List<User> users, TreeMap<String,String> declinedTransactionTracker){
+        double amount = transaction.getAmount();
+        for (User user : users){
+            if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
+                if (Objects.equals(transaction.getType(), "DEPOSIT")){
+                    if (amount <= 0 || (amount < user.getDeposit_min() || amount > user.getDeposit_max())){
+                        declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of deposit"));
+                        return true;
+                    }
+
+                } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
+                    if (amount <= 0 || amount > user.getBalance() || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())){
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of withdraw"));
+                        declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                        return true;
+                    }
+                } else {
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Neither deposit nor withdrawal"));
+                    declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+//    private static boolean verifyUniqueAccount(Transaction transaction,List<Event> events, TreeMap<String,String> declinedTransactionTracker) {
+//        Map<String, Set<String>> userAccounts = new HashMap<>();
+//
+//
+//        // KINNITA ET IGA user_id CARD oleks sama account, unless previous transaction has been cancelled
+//        // KINNOTA et iga user_id oleks erinev CARD account vorreldes teiste user_idga
+//        if ("CARD".equals(transaction.getMethod())) {
+//            String userId = transaction.getUser_id();
+//            String accountNumber = transaction.getAccount_Number();
+//
+//            // If the user_id is not already in the map, add it with a new set
+//            userAccounts.putIfAbsent(userId, new HashSet<>());
+//
+//            // Get the set of accounts for the current user_id
+//            Set<String> accounts = userAccounts.get(userId);
+//            // Add the account number to the set
+//            accounts.add(accountNumber);
+//            // check if a transaction has more than one accounts in userAccount, that only one of them is valid (aka the others are in declinedTransactionTracker
+//            for (Map.Entry<String, Set<String>> entry : userAccounts.entrySet()) {
+//                Set<String> acc = entry.getValue();
+//                if (acc.size() > 1) {
+//                    int validCount = 0;
+//                    for (String account : acc) {
+//                        if (!declinedTransactionTracker.containsValue(account)) {
+//                            validCount++;
+//                        }
+//                    }
+//                    if (validCount != 1) {
+//                        return false;
+//                    }
+//                }
+//            }
+//        }
+//        System.out.println(declinedTransactionTracker);
+//        // All CARD transactions have unique accounts for each user_id
+//        return false;
+//    }
+
 }
 
 
