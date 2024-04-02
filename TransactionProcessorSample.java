@@ -98,11 +98,9 @@ public class TransactionProcessorSample {
             if (verifyDepositWithDraw(transaction, events, users, declinedTransactionTracker,successfulDeposits)){
                 continue;
             }
-            if (verifyUniqueAccount(transaction,events, declinedTransactionTracker)){
-                continue;
-            }
             events.add(new Event(transaction.getTransaction_id(), Event.STATUS_APPROVED ,"OK"));
         }
+        verifyUniqueAccount(transactions,events, declinedTransactionTracker);
         return events;
     }
 
@@ -275,45 +273,63 @@ public class TransactionProcessorSample {
         return false;
     }
 
-    private static boolean verifyUniqueAccount(Transaction transaction,List<Event> events, TreeMap<String,String> declinedTransactionTracker) {
-//        Map<String, Set<String>> userAccounts = new HashMap<>();
-//
-//
-//        // KINNITA ET IGA user_id CARD oleks sama account, unless previous transaction has been cancelled
-//        // KINNOTA et iga user_id oleks erinev CARD account vorreldes teiste user_idga
-//        if ("CARD".equals(transaction.getMethod())) {
-//            String userId = transaction.getUser_id();
-//            String accountNumber = transaction.getAccount_Number();
-//
-//            // If the user_id is not already in the map, add it with a new set
-//            userAccounts.putIfAbsent(userId, new HashSet<>());
-//
-//            // Get the set of accounts for the current user_id
-//            Set<String> accounts = userAccounts.get(userId);
-//            // Add the account number to the set
-//            accounts.add(accountNumber);
-//            // check if a transaction has more than one accounts in userAccount, that only one of them is valid (aka the others are in declinedTransactionTracker
-//            for (Map.Entry<String, Set<String>> entry : userAccounts.entrySet()) {
-//                Set<String> acc = entry.getValue();
-//                if (acc.size() > 1) {
-//                    int validCount = 0;
-//                    for (String account : acc) {
-//                        if (!declinedTransactionTracker.containsValue(account)) {
-//                            validCount++;
-//                        }
-//                    }
-//                    if (validCount != 1) {
-//                        return false;
-//                    }
-//                }
-//            }
-//        }
-//        System.out.println(declinedTransactionTracker);
-//        // All CARD transactions have unique accounts for each user_id
-        if (Objects.equals(transaction.getTransaction_id(), "10703")){
-            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "GET BENT"));
-            return true;
+    private static boolean verifyUniqueAccount(List<Transaction> transactions,List<Event> events, TreeMap<String,String> declinedTransactionTracker) {
+        Map<String, Set<String>> userAccounts = new HashMap<>();
+
+
+        // KINNITA ET IGA user_id CARD oleks sama account, unless previous transaction has been cancelled
+        // KINNOTA et iga user_id oleks erinev CARD account vorreldes teiste user_idga
+        for (Transaction transaction : transactions){
+            String user = transaction.getUser_id();
+            String acc = transaction.getAccount_Number();
+
+            if ("CARD".equals(transaction.getMethod())) {
+                // If user ID is not in the map, add it with a new empty set
+                userAccounts.putIfAbsent(user, new HashSet<>());
+                // Add the account number to the set associated with the current user ID
+                userAccounts.get(user).add(acc);
+
+            }
+
+
         }
+        // Iterate over userAccounts
+        String keeper = null;
+        for (Map.Entry<String, Set<String>> entry : userAccounts.entrySet()) {
+            String userId = entry.getKey();
+            Set<String> accountNumbers = entry.getValue();
+
+            boolean previousAccountValid = true;
+            int count = 0;
+            String ac = null;
+            if (accountNumbers.size() > 1) {
+                for (String accountNumber : accountNumbers) {
+                    if (declinedTransactionTracker.containsValue(accountNumber)){
+                        count += 1;
+                        System.out.println(accountNumber + "contains");
+                        ac = accountNumber;
+                        previousAccountValid = false;
+                        break;
+                    } else {
+                        System.out.println(accountNumber + "does not");
+                        count += 1;
+                    }
+                }
+                 if(count >= 2 && !previousAccountValid){
+                    keeper = ac;
+                }
+            }
+        }
+
+            int c = 0;
+            for (Transaction transaction : transactions){
+                if (Objects.equals(transaction.getAccount_Number(), keeper) && c <= 0){
+                    c += 1;
+                } else if (Objects.equals(transaction.getAccount_Number(), keeper)) {
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "BEGGGINGG"));
+                }
+        }
+
         return false;
     }
 
