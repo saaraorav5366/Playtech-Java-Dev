@@ -87,74 +87,25 @@ public class TransactionProcessorSample {
         List<Event> events = new ArrayList<>();
         // Validate that the transaction ID is unique (not used before).
         for (Transaction transaction : transactions) {
-            if (usedTransactionIds.contains(transaction.getTransaction_id())) {
-                // Transaction ID is not unique
-                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Non-unique transaction ID"));
-            }
-            usedTransactionIds.add(transaction.getTransaction_id());
-            //  Verify that the user exists and is not frozen (users are loaded from a file, see "inputs").
-            Set<String> validCountry = new HashSet<>();
-            for (User user : users) {
-                validCountry.add(user.getCountry());
-                if (user.getFrozen() == 1) {
-                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "User is frozen"));
-                }
-            }
-            // Validate payment method
-            if (Objects.equals(transaction.getMethod(), "TRANSFER")){
-                String iban = transaction.getAccount_Number().replaceAll("\\s"," ");
+            verifyTransactionIdAndUser(usedTransactionIds, transaction, events, users);
+            validatePaymentMethod(transaction,events,users, binMappings);
 
+            double amount = transaction.getAmount();
+            for (User user : users){
+                if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
+                    if (Objects.equals(transaction.getType(), "DEPOSIT")){
+                        if (amount <= 0 || amount > user.getBalance() || (amount < user.getDeposit_min() || amount > user.getDeposit_max())){
+                            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of deposit"));
+                        }
 
-                if(!(validCountry.contains(iban.substring(0, 2)))){
-                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not EE"));
-                }
-                // Move the first four characters to the end
-                iban = iban.substring(4) + iban.substring(0, 4);
-                // Replace letters with digits
-                StringBuilder numericIBAN = new StringBuilder();
-                for (char c : iban.toCharArray()) {
-                    if (Character.isLetter(c)) {
-                        numericIBAN.append(Character.getNumericValue(c));
+                    } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
+                        if (amount <= 0 || amount > user.getBalance() || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())){
+                            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of withdraw"));
+                        }
                     } else {
-                        numericIBAN.append(c);
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Neither deposit nor withdrawal"));
                     }
                 }
-                // Convert to BigInteger
-                BigInteger ibanValue = new BigInteger(numericIBAN.toString());
-
-                // Calculate remainder
-                BigInteger remainder = ibanValue.remainder(BigInteger.valueOf(97));
-
-                if (!remainder.equals(BigInteger.ONE)){
-                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid IBAN number"));
-                }
-            } else if (Objects.equals(transaction.getMethod(), "CARD")) {
-                String accountNumberPrefix = transaction.getAccount_Number().substring(0, 10); // Extract first 6 digits
-                boolean binMatch = false;
-                String cardType = null;
-                // Iterate through BIN mappings to find a match
-                for (BinMapping binMapping : binMappings) {
-                    long rangeFrom = binMapping.getRangeFrom();
-                    long rangeTo = binMapping.getRangeTo();
-                    if (Long.parseLong(accountNumberPrefix) >= rangeFrom && Long.parseLong(accountNumberPrefix) <= rangeTo) {
-                        binMatch = true;
-                        cardType = binMapping.getType();
-                        break;
-                    }
-                }
-
-                // If a matching BIN is found, validate card type
-                if (binMatch) {
-                    if(!Objects.equals(cardType, "DC")){
-                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Not a debit card transaction"));
-                    }
-                } else {
-//                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_APPROVED, "YEEEEE"));
-                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "BIN number not in rangE"));
-                }
-            }
-            else { // Other payment types must be declined
-                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid payment method"));
             }
         }
         return events;
@@ -170,6 +121,110 @@ public class TransactionProcessorSample {
             for (final var event : events) {
                 writer.append(event.transactionId).append(",").append(event.status).append(",").append(event.message).append("\n");
             }
+        }
+    }
+
+    private static void verifyTransactionIdAndUser(Set<String> usedTransactionIds,Transaction transaction, List<Event> events, List<User> users){
+
+        if (usedTransactionIds.contains(transaction.getTransaction_id())) {
+            // Transaction ID is not unique
+            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Non-unique transaction ID"));
+        }
+        usedTransactionIds.add(transaction.getTransaction_id());
+        //  Verify that the user exists and is not frozen (users are loaded from a file, see "inputs").
+
+        List<String> validUser_id = new ArrayList<>();
+        for (User user : users) {
+            validUser_id.add(user.getUser_id());
+            if (user.getFrozen() == 1) {
+                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "User is frozen"));
+            }
+        }
+        if(!validUser_id.contains(transaction.getUser_id())){
+            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "user_id from Transactions not in Users"));
+        }
+    }
+
+    private static void validatePaymentMethod(Transaction transaction, List<Event> events, List<User> users, List<BinMapping> binMappings){
+        // Validate payment method
+        if (Objects.equals(transaction.getMethod(), "TRANSFER")){
+            String iban = transaction.getAccount_Number().replaceAll("\\s"," ");
+
+            for (User user : users) {
+                if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
+                    if(!iban.substring(0, 2).equals(user.getCountry())){
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not exist or is wrong"));
+                    }
+                }
+            }
+
+
+            // Move the first four characters to the end
+            iban = iban.substring(4) + iban.substring(0, 4);
+            // Replace letters with digits
+            StringBuilder numericIBAN = new StringBuilder();
+            for (char c : iban.toCharArray()) {
+                if (Character.isLetter(c)) {
+                    numericIBAN.append(Character.getNumericValue(c));
+                } else {
+                    numericIBAN.append(c);
+                }
+            }
+            // Convert to BigInteger
+            BigInteger ibanValue = new BigInteger(numericIBAN.toString());
+
+            // Calculate remainder
+            BigInteger remainder = ibanValue.remainder(BigInteger.valueOf(97));
+
+            if (!remainder.equals(BigInteger.ONE)){
+                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid IBAN number"));
+            }
+        } else if (Objects.equals(transaction.getMethod(), "CARD")) {
+            String accountNumberPrefix = transaction.getAccount_Number().substring(0, 10); // Extract first 10 digits
+            boolean binMatch = false;
+            String cardType = null;
+            boolean countryMatch = false;
+
+// Iterate through BIN mappings to find a match
+            for (BinMapping binMapping : binMappings) {
+                long rangeFrom = binMapping.getRangeFrom();
+                long rangeTo = binMapping.getRangeTo();
+                if (Long.parseLong(accountNumberPrefix) >= rangeFrom && Long.parseLong(accountNumberPrefix) <= rangeTo) {
+                    binMatch = true;
+                    cardType = binMapping.getType();
+                    // Check if the country code matches for this BIN mapping
+                    // Check if the country code matches for this BIN mapping
+                    for (User user : users) {
+                        if (Objects.equals(binMapping.getCountry().substring(0, 2), user.getCountry())) {
+                            countryMatch = true;
+                            break; // Exit the loop once a matching user country is found
+                        }
+                    }
+
+                    // Exit the loop once a BIN match is found
+                    if (binMatch) {
+                        break;
+                    }
+                }
+            }
+
+            // Check if a matching BIN was found
+            if (!binMatch) {
+                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "BIN number not in range"));
+            } else {
+                // Check if the country code matches
+                if (!countryMatch) {
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code mismatch"));
+                } else {
+                    // Check if the card type is valid
+                    if (!Objects.equals(cardType, "DC")) {
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Not a debit card transaction"));
+                    }
+                }
+            }
+        }
+        else { // Other payment types must be declined
+            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid payment method"));
         }
     }
 }
@@ -199,15 +254,37 @@ class User {
         this.withdraw_max = withdraw_max;
     }
 
+    public String getUser_id() {
+        return this.user_id;
+    }
+
     public int getFrozen(){
         return this.frozen;
+    }
+
+    public double getBalance() {
+        return this.balance;
     }
 
     public String getCountry(){
         return this.country;
     }
 
+    public double getDeposit_max() {
+        return this.deposit_max;
+    }
 
+    public double getDeposit_min() {
+        return this.deposit_min;
+    }
+
+    public double getWithdraw_max() {
+        return this.withdraw_max;
+    }
+
+    public double getWithdraw_min() {
+        return withdraw_min;
+    }
 }
 
 class Transaction {
@@ -231,12 +308,24 @@ class Transaction {
         return this.transaction_id;
     }
 
+    public String getUser_id() {
+        return this.user_id;
+    }
+
+    public String getType() {
+        return this.type;
+    }
+
     public String getMethod(){
         return this.method;
     }
     
     public String getAccount_Number(){
         return this.account_number;
+    }
+
+    public double getAmount() {
+        return this.amount;
     }
 }
 
@@ -264,6 +353,9 @@ class BinMapping {
 
     public String getType() {
         return this.type;
+    }
+    public String getCountry(){
+        return this.country;
     }
 }
 
