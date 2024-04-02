@@ -1,13 +1,11 @@
 package com.playtech.assignment;
 
 import java.io.*;
+import java.math.BigInteger;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 
 
 // This template shows input parameters format.
@@ -87,12 +85,77 @@ public class TransactionProcessorSample {
     private static List<Event> processTransactions(final List<User> users, final List<Transaction> transactions, final List<BinMapping> binMappings) {
         Set<String> usedTransactionIds = new HashSet<>();
         List<Event> events = new ArrayList<>();
+        // Validate that the transaction ID is unique (not used before).
         for (Transaction transaction : transactions) {
-            if (usedTransactionIds.contains(transaction.getTransactionId())) {
+            if (usedTransactionIds.contains(transaction.getTransaction_id())) {
                 // Transaction ID is not unique
-                events.add(new Event(transaction.getTransactionId(), Event.STATUS_DECLINED, "Transaction ID not unique"));
+                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Non-unique transaction ID"));
             }
-            usedTransactionIds.add(transaction.getTransactionId());
+            usedTransactionIds.add(transaction.getTransaction_id());
+            //  Verify that the user exists and is not frozen (users are loaded from a file, see "inputs").
+            Set<String> validCountry = new HashSet<>();
+            for (User user : users) {
+                validCountry.add(user.getCountry());
+                if (user.getFrozen() == 1) {
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "User is frozen"));
+                }
+            }
+            // Validate payment method
+            if (Objects.equals(transaction.getMethod(), "TRANSFER")){
+                String iban = transaction.getAccount_Number().replaceAll("\\s"," ");
+
+
+                if(!(validCountry.contains(iban.substring(0, 2)))){
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not EE"));
+                }
+                // Move the first four characters to the end
+                iban = iban.substring(4) + iban.substring(0, 4);
+                // Replace letters with digits
+                StringBuilder numericIBAN = new StringBuilder();
+                for (char c : iban.toCharArray()) {
+                    if (Character.isLetter(c)) {
+                        numericIBAN.append(Character.getNumericValue(c));
+                    } else {
+                        numericIBAN.append(c);
+                    }
+                }
+                // Convert to BigInteger
+                BigInteger ibanValue = new BigInteger(numericIBAN.toString());
+
+                // Calculate remainder
+                BigInteger remainder = ibanValue.remainder(BigInteger.valueOf(97));
+
+                if (!remainder.equals(BigInteger.ONE)){
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid IBAN number"));
+                }
+            } else if (Objects.equals(transaction.getMethod(), "CARD")) {
+                String accountNumberPrefix = transaction.getAccount_Number().substring(0, 10); // Extract first 6 digits
+                boolean binMatch = false;
+                String cardType = null;
+                // Iterate through BIN mappings to find a match
+                for (BinMapping binMapping : binMappings) {
+                    long rangeFrom = binMapping.getRangeFrom();
+                    long rangeTo = binMapping.getRangeTo();
+                    if (Long.parseLong(accountNumberPrefix) >= rangeFrom && Long.parseLong(accountNumberPrefix) <= rangeTo) {
+                        binMatch = true;
+                        cardType = binMapping.getType();
+                        break;
+                    }
+                }
+
+                // If a matching BIN is found, validate card type
+                if (binMatch) {
+                    if(!Objects.equals(cardType, "DC")){
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Not a debit card transaction"));
+                    }
+                } else {
+//                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_APPROVED, "YEEEEE"));
+                    events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "BIN number not in rangE"));
+                }
+            }
+            else { // Other payment types must be declined
+                events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid payment method"));
+            }
         }
         return events;
     }
@@ -136,6 +199,14 @@ class User {
         this.withdraw_max = withdraw_max;
     }
 
+    public int getFrozen(){
+        return this.frozen;
+    }
+
+    public String getCountry(){
+        return this.country;
+    }
+
 
 }
 
@@ -145,19 +216,27 @@ class Transaction {
     private String type;
     private double amount;
     private String method;
-    private String accountNumber;
+    private String account_number;
     public Transaction(String transaction_id, String user_id, String type, double amount,
-                       String method, String accountNumber){
+                       String method, String account_number){
         this.transaction_id = transaction_id;
         this.user_id = user_id;
         this.amount = amount;
         this.type = type;
         this.method = method;
-        this.accountNumber = accountNumber;
+        this.account_number = account_number;
     }
 
-    public String getTransactionId() {
+    public String getTransaction_id() {
         return this.transaction_id;
+    }
+
+    public String getMethod(){
+        return this.method;
+    }
+    
+    public String getAccount_Number(){
+        return this.account_number;
     }
 }
 
@@ -173,6 +252,18 @@ class BinMapping {
         this.rangeTo = rangeTo;
         this.type = type;
         this.country = country;
+    }
+
+    public long getRangeFrom() {
+        return this.rangeFrom;
+    }
+
+    public long getRangeTo() {
+        return this.rangeTo;
+    }
+
+    public String getType() {
+        return this.type;
     }
 }
 
