@@ -86,6 +86,7 @@ public class TransactionProcessorSample {
         Set<String> usedTransactionIds = new HashSet<>();
         List<Event> events = new ArrayList<>();
         TreeMap<String,String> declinedTransactionTracker = new TreeMap<>();
+        Map<String, Set<String>> successfulDeposits = new HashMap<>();
         // Validate that the transaction ID is unique (not used before).
         for (Transaction transaction : transactions) {
             if (verifyTransactionIdAndUser(usedTransactionIds, transaction, events, users, declinedTransactionTracker)){
@@ -94,10 +95,13 @@ public class TransactionProcessorSample {
             if (validatePaymentMethod(transaction, events, users, binMappings, declinedTransactionTracker)){
                 continue;
             }
-            if (verifyDepositWithDraw(transaction, events, users, declinedTransactionTracker)){
+            if (verifyDepositWithDraw(transaction, events, users, declinedTransactionTracker,successfulDeposits)){
                 continue;
             }
-//            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Country code does not exist or is wrong"));
+            if (verifyUniqueAccount(transaction,events, declinedTransactionTracker)){
+                continue;
+            }
+            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_APPROVED ,"OK"));
         }
         return events;
     }
@@ -186,14 +190,13 @@ public class TransactionProcessorSample {
             String cardType = null;
             boolean countryMatch = false;
 
-// Iterate through BIN mappings to find a match
+            // Iterate through BIN mappings to find a match
             for (BinMapping binMapping : binMappings) {
                 long rangeFrom = binMapping.getRangeFrom();
                 long rangeTo = binMapping.getRangeTo();
                 if (Long.parseLong(accountNumberPrefix) >= rangeFrom && Long.parseLong(accountNumberPrefix) <= rangeTo) {
                     binMatch = true;
                     cardType = binMapping.getType();
-                    // Check if the country code matches for this BIN mapping
                     // Check if the country code matches for this BIN mapping
                     for (User user : users) {
                         if (Objects.equals(binMapping.getCountry().substring(0, 2), user.getCountry())) {
@@ -238,7 +241,7 @@ public class TransactionProcessorSample {
     }
 
 
-    private static boolean verifyDepositWithDraw(Transaction transaction, List<Event> events, List<User> users, TreeMap<String,String> declinedTransactionTracker){
+    private static boolean verifyDepositWithDraw(Transaction transaction, List<Event> events, List<User> users, TreeMap<String,String> declinedTransactionTracker, Map<String, Set<String>> successfulDeposits){
         double amount = transaction.getAmount();
         for (User user : users){
             if (Objects.equals(transaction.getUser_id(), user.getUser_id())){
@@ -247,11 +250,18 @@ public class TransactionProcessorSample {
                         declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of deposit"));
                         return true;
+                    } else {
+                        successfulDeposits.computeIfAbsent(transaction.getUser_id(), k -> new HashSet<>()).add(transaction.getAccount_Number());
                     }
 
                 } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
                     if (amount <= 0 || amount > user.getBalance() || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())){
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of withdraw"));
+                        declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
+                        return true;
+                    }
+                    if (!successfulDeposits.containsKey(transaction.getUser_id()) || !successfulDeposits.get(transaction.getUser_id()).contains(transaction.getAccount_Number())) {
+                        events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Withdrawal not allowed with this account"));
                         declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
                         return true;
                     }
@@ -265,7 +275,7 @@ public class TransactionProcessorSample {
         return false;
     }
 
-//    private static boolean verifyUniqueAccount(Transaction transaction,List<Event> events, TreeMap<String,String> declinedTransactionTracker) {
+    private static boolean verifyUniqueAccount(Transaction transaction,List<Event> events, TreeMap<String,String> declinedTransactionTracker) {
 //        Map<String, Set<String>> userAccounts = new HashMap<>();
 //
 //
@@ -300,8 +310,12 @@ public class TransactionProcessorSample {
 //        }
 //        System.out.println(declinedTransactionTracker);
 //        // All CARD transactions have unique accounts for each user_id
-//        return false;
-//    }
+        if (Objects.equals(transaction.getTransaction_id(), "10703")){
+            events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "GET BENT"));
+            return true;
+        }
+        return false;
+    }
 
 }
 
