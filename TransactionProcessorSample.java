@@ -19,6 +19,7 @@ public class TransactionProcessorSample {
 
         List<Event> events = TransactionProcessorSample.processTransactions(users, transactions, binMappings);
 //
+        updateBalances(users, transactions, events);
         TransactionProcessorSample.writeBalances(Paths.get(args[3]), users);
         TransactionProcessorSample.writeEvents(Paths.get(args[4]), events);
     }
@@ -34,7 +35,7 @@ public class TransactionProcessorSample {
             String line;
             while ((line = reader.readLine()) != null) {
                 String[] parts = line.split(",");
-                users.add(new User(parts[0], parts[1], parts[2], parts[3], Integer.parseInt(parts[4]),
+                users.add(new User(parts[0], parts[1], Double.parseDouble(parts[2]), parts[3], Integer.parseInt(parts[4]),
                         Double.parseDouble(parts[5]), Double.parseDouble(parts[6]), Double.parseDouble(parts[7]),
                         Double.parseDouble(parts[8])));
             }
@@ -111,9 +112,10 @@ public class TransactionProcessorSample {
 
     private static void writeBalances(final Path filePath, final List<User> users) {
         try (final FileWriter writer = new FileWriter(filePath.toFile(), false)) {
-            writer.append("USER_ID,BALANCEEEE\n");
+            writer.append("USER_ID,BALANCE\n");
             for (User user : users) {
-                writer.append(user.getUser_id()).append(",").append(user.getBalance()).append("\n");
+                String balance = String.format("%.2f",user.getBalance());
+                writer.append(user.getUser_id()).append(",").append(balance).append("\n");
             }
         } catch (IOException e) {
             throw new RuntimeException(e);
@@ -264,7 +266,7 @@ public class TransactionProcessorSample {
                     }
 
                 } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
-                    if (amount <= 0 || amount > Double.parseDouble(user.getBalance()) || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())) {
+                    if (amount <= 0 || amount > user.getBalance() || (amount < user.getWithdraw_min() || amount > user.getWithdraw_max())) {
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, "Invalid amount or not within the bounds of withdraw"));
                         declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
                         return true;
@@ -350,6 +352,37 @@ public class TransactionProcessorSample {
         }
         return false;
     }
+
+    private static void updateBalances(List<User> users, List<Transaction> transactions, List<Event> events) {
+        for (Transaction transaction : transactions) {
+            String userId = transaction.getUser_id();
+            double amount = transaction.getAmount();
+
+            boolean transactionAccepted = isTransactionAccepted(transaction, events);
+
+            for (User user : users) {
+                if (user.getUser_id().equals(userId)) {
+                    if (transactionAccepted && transaction.getType().equals("DEPOSIT")) {
+                        user.updateBalance(amount);
+                    } else if (transactionAccepted && transaction.getType().equals("WITHDRAW")) {
+                        user.updateBalance(-amount);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    private static boolean isTransactionAccepted(Transaction transaction, List<Event> events) {
+        for (Event event : events) {
+            if (event.getTransaction_id().equals(transaction.getTransaction_id())) {
+                return event.getStatus().equals(Event.STATUS_APPROVED);
+            }
+        }
+        return false;
+    }
+
+
 }
 
 
@@ -359,7 +392,7 @@ public class TransactionProcessorSample {
 class User {
     private String user_id;
     private String username;
-    private String balance;
+    private double balance;
     private String country;
     private int frozen;
     private double deposit_min;
@@ -367,7 +400,7 @@ class User {
     private double withdraw_min;
     private double withdraw_max;
 
-    public User(String user_id, String username, String balance, String country,
+    public User(String user_id, String username, double balance, String country,
                 int frozen, double deposit_min, double deposit_max,double withdraw_min, double withdraw_max){
         this.user_id = user_id;
         this.username = username;
@@ -388,8 +421,13 @@ class User {
         return this.frozen;
     }
 
-    public String getBalance() {
+    public double getBalance() {
         return this.balance;
+    }
+
+    // Method to update the balance
+    public void updateBalance(double amount) {
+        this.balance += amount;
     }
 
     public String getCountry(){
@@ -499,11 +537,12 @@ class Event {
         this.message = message;
     }
 
-    public String getTransactionId() {
-        return this.transactionId;
+
+    public String getStatus(){
+        return this.status;
     }
 
-    public String getMessage(){
-        return this.message;
+    public String getTransaction_id() {
+        return this.transactionId;
     }
 }
