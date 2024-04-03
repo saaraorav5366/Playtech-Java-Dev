@@ -89,7 +89,6 @@ public class TransactionProcessorSample {
         TreeMap<String, String> declinedTransactionTracker = new TreeMap<>();
         TreeMap<String, String> acceptedTransactionTracker = new TreeMap<>();
         Map<String, Set<String>> successfulDeposits = new HashMap<>();
-        // Validate that the transaction ID is unique (not used before).
         for (Transaction transaction : transactions) {
             if (verifyUser(transaction,events, acceptedTransactionTracker)){
                 continue;
@@ -308,7 +307,6 @@ public class TransactionProcessorSample {
         // Iterate over userAccounts
         String keeper = null;
         for (Map.Entry<String, Set<String>> entry : userAccounts.entrySet()) {
-            String userId = entry.getKey();
             Set<String> accountNumbers = entry.getValue();
 
             boolean previousAccountValid = true;
@@ -382,28 +380,58 @@ public class TransactionProcessorSample {
         return false;
     }
 
-
 }
 
 
 
 
-
+/**
+ * A class named User representing a user account.
+ */
 class User {
-    private String user_id;
+    /**
+     * ID of the user.
+     */
+    private final String user_id;
+    /**
+     * Username associated with the user.
+     */
     private String username;
+    /**
+     * Current balance in the user's account.
+     */
     private double balance;
-    private String country;
-    private int frozen;
-    private double deposit_min;
-    private double deposit_max;
-    private double withdraw_min;
-    private double withdraw_max;
+    /**
+     * two-letter country code, ISO 3166-1 alpha-2 associated with the user.
+     */
+    private final String country;
+    /**
+     * Flag where 0 represents an active user, 1 represents frozen.
+     */
+    private final int frozen;
+    /**
+     * Minimum deposit amount allowed for the user.
+     */
+    private final double deposit_min;
+    /**
+     * Maximum deposit amount allowed for the user.
+     */
+    private final double deposit_max;
+    /**
+     * Minimum withdrawal amount allowed for the user.
+     */
+    private final double withdraw_min;
+    /**
+     * Maximum withdrawal amount allowed for the user.
+     */
+    private final double withdraw_max;
 
+    /**
+     * Constructor to initialize User objects.
+     */
     public User(String user_id, String username, double balance, String country,
                 int frozen, double deposit_min, double deposit_max,double withdraw_min, double withdraw_max){
         this.user_id = user_id;
-        this.username = username;
         this.balance = balance;
         this.country = country;
         this.frozen = frozen;
@@ -413,6 +441,9 @@ class User {
         this.withdraw_max = withdraw_max;
     }
 
+    /**
+     * Getter methods for retrieving objects of the User class.
+     */
     public String getUser_id() {
         return this.user_id;
     }
@@ -423,11 +454,6 @@ class User {
 
     public double getBalance() {
         return this.balance;
-    }
-
-    // Method to update the balance
-    public void updateBalance(double amount) {
-        this.balance += amount;
     }
 
     public String getCountry(){
@@ -449,15 +475,47 @@ class User {
     public double getWithdraw_min() {
         return withdraw_min;
     }
+
+    /**
+     * Method to update every account's balance.
+     */
+    public void updateBalance(double amount) {
+        this.balance += amount;
+    }
 }
 
+/**
+ * A class named Transaction representing a financial transaction.
+ */
 class Transaction {
-    private String transaction_id;
-    private String user_id;
-    private String type;
-    private double amount;
-    private String method;
-    private String account_number;
+    /**
+     * ID of the transaction.
+     */
+    private final String transaction_id;
+    /**
+     * ID of the user.
+     */
+    private final String user_id;
+    /**
+     * Transaction type (allowed values are DEPOSIT or WITHDRAW).
+     */
+    private final String type;
+    /**
+     * Amount of the transaction.
+     */
+    private final double amount;
+    /**
+     * Payment method used for the transaction.
+     */
+    private final String method;
+    /**
+     * Account number associated with the transaction.
+     */
+    private final String account_number;
+
+    /**
+     * Constructor to initialize Transaction objects.
+     */
     public Transaction(String transaction_id, String user_id, String type, double amount,
                        String method, String account_number){
         this.transaction_id = transaction_id;
@@ -468,6 +526,9 @@ class Transaction {
         this.account_number = account_number;
     }
 
+    /**
+     * Getter methods for retrieving objects of the Transaction class.
+     */
     public String getTransaction_id() {
         return this.transaction_id;
     }
@@ -493,12 +554,34 @@ class Transaction {
     }
 }
 
+/**
+ * A class named BinMapping representing a mapping between BIN ranges and card types.
+ */
 class BinMapping {
+    /**
+     * Issuing bank name.
+     */
     private String name;
-    private long rangeFrom;
-    private long rangeTo;
-    private String type;
-    private String country;
+    /**
+     * The lowest possible card number (first 10 digits of card number) that would be identified within this card range, inclusive.
+     */
+    private final long rangeFrom;
+    /**
+     * The highest possible card number (first 10 digits of card number) that would be identified within this card range, inclusive.
+     */
+    private final long rangeTo;
+    /**
+     * Type of card associated with the BIN range (either debit or credit).
+     */
+    private final String type;
+    /**
+     * Three-letter country code, ISO 3166-1 alpha-3 that is associated with the BIN range.
+     */
+    private final String country;
+
+    /**
+     * Constructor to initialize BinMapping objects.
+     */
     public BinMapping(String name, long rangeFrom, long rangeTo, String type, String country){
         this.name = name;
         this.rangeFrom = rangeFrom;
@@ -507,6 +590,9 @@ class BinMapping {
         this.country = country;
     }
 
+    /**
+     * Getter methods for retrieving objects of the BinMapping class.
+     */
     public long getRangeFrom() {
         return this.rangeFrom;
     }
@@ -523,25 +609,45 @@ class BinMapping {
     }
 }
 
+/**
+ * A class named Event representing an event related to a transaction.
+ */
 class Event {
+
+    /**
+     * Define constants for the status of the event.
+     */
     public static final String STATUS_DECLINED = "DECLINED";
     public static final String STATUS_APPROVED = "APPROVED";
 
+    /**
+     * ID of the transaction associated with the event.
+     */
     public String transactionId;
+    /**
+     *  Status of the event (either DECLINED or APPROVED).
+     */
     public String status;
+    /**
+     * Additional message describing the event.
+     */
     public String message;
 
+    /**
+     * Constructor to initialize Event objects.
+     */
     public Event(String transactionId, String status, String message) {
         this.transactionId = transactionId;
         this.status = status;
         this.message = message;
     }
 
-
+    /**
+     * Getter methods for retrieving the status and transaction id of the event.
+     */
     public String getStatus(){
         return this.status;
     }
-
     public String getTransaction_id() {
         return this.transactionId;
     }
