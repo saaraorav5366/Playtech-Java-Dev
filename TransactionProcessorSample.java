@@ -60,7 +60,6 @@ public class TransactionProcessorSample {
                         Double.parseDouble(parts[5]), Double.parseDouble(parts[6]), Double.parseDouble(parts[7]),
                         Double.parseDouble(parts[8])));
             }
-            reader.close(); // Close the reader
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -86,7 +85,6 @@ public class TransactionProcessorSample {
                 String[] parts = line.split(",");
                 transactions.add(new Transaction(parts[0], parts[1], parts[2], Double.parseDouble(parts[3]), parts[4], parts[5]));
             }
-            reader.close(); // Close the reader
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -106,7 +104,6 @@ public class TransactionProcessorSample {
                 String[] parts = line.split(",");
                 binMappings.add(new BinMapping(parts[0], Long.parseLong(parts[1]), Long.parseLong(parts[2]), parts[3], parts[4]));
             }
-            reader.close(); // Close the reader
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -362,6 +359,8 @@ public class TransactionProcessorSample {
                         declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, amount + " amount not within the bounds of deposit"));
                         return true;
+                    }else {
+                        successfulDeposits.computeIfAbsent(transaction.getUser_id(), k -> new HashSet<>()).add(transaction.getAccount_Number());
                     }
 
                 } else if (Objects.equals(transaction.getType(), "WITHDRAW")) {
@@ -375,8 +374,6 @@ public class TransactionProcessorSample {
                         events.add(new Event(transaction.getTransaction_id(), Event.STATUS_DECLINED, amount + " amount not within the bounds of withdrawal"));
                         declinedTransactionTracker.put(transaction.getTransaction_id(), transaction.getAccount_Number());
                         return true;
-                    } else {
-                        successfulDeposits.computeIfAbsent(transaction.getUser_id(), k -> new HashSet<>()).add(transaction.getAccount_Number());
                     }
 
                     // Check if the account has been used for a successful deposit before allowing withdrawal
@@ -496,26 +493,38 @@ public class TransactionProcessorSample {
      * @param events       The list of events containing transaction status information.
      */
     private static void updateBalances(List<User> users, List<Transaction> transactions, List<Event> events) {
+        // Initialize a TreeMap to track processed transactions
+        TreeMap<String, Boolean> processedTransactions = new TreeMap<>();
+
         for (Transaction transaction : transactions) {
+            // Check if the transaction ID has already been processed
+            if (processedTransactions.containsKey(transaction.getTransaction_id())) {
+                continue; // Skip processing if already processed
+            }
+
             // Get the user ID associated with the transaction
             String userId = transaction.getUser_id();
             // Get the transaction amount
             double amount = transaction.getAmount();
             // Check if the transaction is accepted based on events
             boolean transactionAccepted = isTransactionAccepted(transaction, events);
+            System.out.println(transaction.getTransaction_id());
+            System.out.println(transactionAccepted);
             for (User user : users) {
                 // Find the user corresponding to the transaction
                 if (user.getUser_id().equals(userId)) {
                     // If the transaction is accepted, and it's a deposit, update the user balance by adding amount
                     if (transactionAccepted && transaction.getType().equals("DEPOSIT")) {
                         user.updateBalance(amount);
-                    // If the transaction is accepted, and it's a withdrawal, update the user balance by subtracting amount
+                        // If the transaction is accepted, and it's a withdrawal, update the user balance by subtracting amount
                     } else if (transactionAccepted && transaction.getType().equals("WITHDRAW")) {
                         user.updateBalance(-amount);
                     }
                     break; // Break after finding the user
                 }
             }
+            // Mark the transaction ID as processed
+            processedTransactions.put(transaction.getTransaction_id(), true);
         }
     }
 
@@ -531,6 +540,7 @@ public class TransactionProcessorSample {
             // Check if the event corresponds to the transaction ID
             if (event.getTransaction_id().equals(transaction.getTransaction_id())) {
                 // Return true if the transaction is accepted
+                System.out.println(event.getStatus());
                 return event.getStatus().equals(Event.STATUS_APPROVED);
             }
         }
@@ -611,6 +621,12 @@ class User {
     public double getBalance() {
         return this.balance;
     }
+    /**
+     * Method to update every account's balance.
+     */
+    public void updateBalance(double amount) {
+        this.balance += amount;
+    }
 
     public String getCountry(){
         return this.country;
@@ -630,13 +646,6 @@ class User {
 
     public double getWithdraw_min() {
         return withdraw_min;
-    }
-
-    /**
-     * Method to update every account's balance.
-     */
-    public void updateBalance(double amount) {
-        this.balance += amount;
     }
 }
 
@@ -700,7 +709,7 @@ class Transaction {
     public String getMethod(){
         return this.method;
     }
-    
+
     public String getAccount_Number(){
         return this.account_number;
     }
