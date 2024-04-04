@@ -508,8 +508,6 @@ public class TransactionProcessorSample {
             double amount = transaction.getAmount();
             // Check if the transaction is accepted based on events
             boolean transactionAccepted = isTransactionAccepted(transaction, events);
-            System.out.println(transaction.getTransaction_id());
-            System.out.println(transactionAccepted);
             for (User user : users) {
                 // Find the user corresponding to the transaction
                 if (user.getUser_id().equals(userId)) {
@@ -540,7 +538,6 @@ public class TransactionProcessorSample {
             // Check if the event corresponds to the transaction ID
             if (event.getTransaction_id().equals(transaction.getTransaction_id())) {
                 // Return true if the transaction is accepted
-                System.out.println(event.getStatus());
                 return event.getStatus().equals(Event.STATUS_APPROVED);
             }
         }
